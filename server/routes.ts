@@ -76,11 +76,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           certifiedStaff,
           expiringCertifications,
           criticalAlerts,
-          recentIncidents: recentIncidents.length,
         },
         staffCertifications: staffCertifications.slice(0, 5),
         recentIncidents: recentIncidents.slice(0, 3),
-        alerts: alerts.filter(a => a.isActive).slice(0, 3),
+        recentAlerts: alerts.filter(a => a.isActive).slice(0, 5),
       });
     } catch (error) {
       console.error("Error fetching manager dashboard:", error);
@@ -130,6 +129,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Error creating alert:", error);
       res.status(500).json({ message: "Failed to create alert" });
+    }
+  });
+
+  // Create a new venue and assign manager to it
+  app.post("/api/venues", isAuthenticated, attachUser, async (req, res) => {
+    try {
+      const venueData = insertVenueSchema.parse(req.body);
+      const venue = await storage.createVenue(venueData);
+      
+      // Assign the current user (assumed to be a manager) to this venue
+      if (req.dbUser) {
+        await storage.updateUser(req.dbUser.id, {
+          venueId: venue.id,
+          role: 'manager', // Ensure they are a manager
+        });
+      }
+      
+      res.status(201).json(venue);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: error.errors });
+      }
+      console.error("Error creating venue:", error);
+      res.status(500).json({ message: "Failed to create venue" });
+    }
+  });
+
+  // Update venue details
+  app.patch("/api/venues/:id", isAuthenticated, attachUser, requireManager, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Ensure manager owns this venue
+      if (req.dbUser?.venueId !== id) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      const updates = req.body;
+      const venue = await storage.updateVenue(id, updates);
+      
+      if (!venue) {
+        return res.status(404).json({ message: "Venue not found" });
+      }
+      
+      res.json(venue);
+    } catch (error) {
+      console.error("Error updating venue:", error);
+      res.status(500).json({ message: "Failed to update venue" });
     }
   });
 

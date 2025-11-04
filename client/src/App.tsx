@@ -9,11 +9,13 @@ import { BottomNav } from "@/components/ui/bottom-nav";
 import { FAB } from "@/components/ui/fab";
 import { LandingPage } from "@/components/landing-page";
 import { ManagerDashboard } from "@/components/manager/dashboard";
+import { StaffManagement } from "@/components/manager/staff-management";
 import { StaffDashboard } from "@/components/staff/dashboard";
 import { TrainingModuleViewer } from "@/components/training-module-viewer";
 import { IncidentReportForm } from "@/components/incident-report-form";
 import { AlertsPage } from "@/components/alerts-page";
 import { AccountPage } from "@/components/account-page";
+import { VenueOnboarding } from "@/components/venue-onboarding";
 import NotFound from "@/pages/not-found";
 import { 
   LayoutDashboard, 
@@ -64,6 +66,11 @@ function Router() {
     return <LandingPage />;
   }
 
+  // Show venue onboarding for managers without a venue
+  if (isManager && !user?.venueId) {
+    return <VenueOnboarding onComplete={() => window.location.reload()} />;
+  }
+
   // Determine default route based on role
   const defaultRoute = isManager ? "/dashboard" : "/training";
 
@@ -83,17 +90,7 @@ function Router() {
         {isManager && (
           <>
             <Route path="/dashboard" component={ManagerDashboard} />
-            <Route path="/staff">
-              <div className="min-h-screen bg-background pb-20 px-4 py-6">
-                <div className="max-w-3xl mx-auto text-center">
-                  <Users className="w-16 h-16 mx-auto mb-4 opacity-50 text-muted-foreground" />
-                  <h2 className="text-xl font-bold mb-2">Staff Management</h2>
-                  <p className="text-muted-foreground">
-                    Staff roster management will be implemented in the backend phase.
-                  </p>
-                </div>
-              </div>
-            </Route>
+            <Route path="/staff" component={StaffManagement} />
             <Route path="/alerts" component={AlertsPage} />
           </>
         )}

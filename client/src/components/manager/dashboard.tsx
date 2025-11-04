@@ -9,36 +9,32 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import type { Certification, Alert as AlertType, User } from "@shared/schema";
 
-interface DashboardStats {
-  certifiedStaffCount: number;
-  totalStaffCount: number;
-  activeAlertsCount: number;
-  overdueTrainingCount: number;
-  certificationRate: number;
-}
-
 interface StaffWithCertification extends User {
   certification?: Certification | null;
 }
 
+interface DashboardData {
+  venue: any;
+  metrics: {
+    totalStaff: number;
+    certifiedStaff: number;
+    expiringCertifications: number;
+    criticalAlerts: number;
+  };
+  recentAlerts: AlertType[];
+  staffCertifications: StaffWithCertification[];
+}
+
 export function ManagerDashboard() {
-  // Fetch dashboard stats
-  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
-    queryKey: ["/api/manager/dashboard-stats"],
+  // Fetch unified dashboard data
+  const { data, isLoading } = useQuery<DashboardData>({
+    queryKey: ["/api/manager/dashboard"],
   });
 
-  // Fetch recent alerts
-  const { data: alerts, isLoading: alertsLoading } = useQuery<AlertType[]>({
-    queryKey: ["/api/manager/alerts"],
-  });
-
-  // Fetch staff compliance data
-  const { data: staffList, isLoading: staffLoading } = useQuery<StaffWithCertification[]>({
-    queryKey: ["/api/manager/staff"],
-  });
-
-  const activeAlerts = alerts?.filter(a => a.isActive) || [];
+  const metrics = data?.metrics;
+  const activeAlerts = data?.recentAlerts?.filter(a => a.isActive) || [];
   const criticalAlerts = activeAlerts.filter(a => a.severity === 'critical');
+  const staffList = data?.staffCertifications || [];
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -63,30 +59,34 @@ export function ManagerDashboard() {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <MetricCard
             title="Certified Staff"
-            value={statsLoading ? "-" : `${stats?.certifiedStaffCount || 0}/${stats?.totalStaffCount || 0}`}
+            value={isLoading ? "-" : `${metrics?.certifiedStaff || 0}/${metrics?.totalStaff || 0}`}
             icon={ShieldCheck}
             iconClassName="bg-success/10 text-success"
+            data-testid="card-metric-certified-staff"
           />
           
           <MetricCard
             title="Active Alerts"
-            value={statsLoading ? "-" : activeAlerts.length}
+            value={isLoading ? "-" : activeAlerts.length}
             icon={AlertTriangle}
             iconClassName="bg-warning/10 text-warning"
+            data-testid="card-metric-active-alerts"
           />
           
           <MetricCard
-            title="Overdue Training"
-            value={statsLoading ? "-" : stats?.overdueTrainingCount || 0}
+            title="Expiring Soon"
+            value={isLoading ? "-" : metrics?.expiringCertifications || 0}
             icon={Clock}
-            iconClassName="bg-danger/10 text-danger"
+            iconClassName="bg-warning/10 text-warning"
+            data-testid="card-metric-expiring"
           />
           
           <MetricCard
             title="Compliance Rate"
-            value={statsLoading ? "-" : `${stats?.certificationRate || 0}%`}
+            value={isLoading ? "-" : `${metrics?.totalStaff > 0 ? Math.round((metrics?.certifiedStaff / metrics?.totalStaff) * 100) : 0}%`}
             icon={Users}
             iconClassName="bg-primary/10 text-primary"
+            data-testid="card-metric-compliance-rate"
           />
         </div>
 
@@ -101,7 +101,7 @@ export function ManagerDashboard() {
             </Link>
           </CardHeader>
           <CardContent className="space-y-3">
-            {alertsLoading ? (
+            {isLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-20 bg-muted/50 rounded-lg animate-pulse" />
@@ -146,7 +146,7 @@ export function ManagerDashboard() {
             </Link>
           </CardHeader>
           <CardContent className="space-y-3">
-            {staffLoading ? (
+            {isLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-16 bg-muted/50 rounded-lg animate-pulse" />
