@@ -17,6 +17,8 @@ import type {
   InsertIncident,
   Alert,
   InsertAlert,
+  PushSubscription,
+  InsertPushSubscription,
 } from "@shared/schema";
 import {
   users,
@@ -27,6 +29,7 @@ import {
   certifications,
   incidents,
   alerts,
+  pushSubscriptions,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -40,6 +43,7 @@ export interface IStorage {
 
   // Venue operations
   getVenue(id: string): Promise<Venue | undefined>;
+  getVenueByPlaceId(placeId: string): Promise<Venue | undefined>;
   getVenuesByManager(managerId: string): Promise<Venue[]>;
   createVenue(venue: InsertVenue): Promise<Venue>;
   updateVenue(id: string, updates: Partial<InsertVenue>): Promise<Venue | undefined>;
@@ -77,6 +81,11 @@ export interface IStorage {
   getActiveAlertsByLocation(latitude: string, longitude: string, radiusMiles: string): Promise<Alert[]>;
   getAlertsByVenue(venueId: string): Promise<Alert[]>;
   updateAlert(id: string, updates: Partial<InsertAlert>): Promise<Alert | undefined>;
+
+  // Push Subscription operations
+  getUserPushSubscriptions(userId: string): Promise<PushSubscription[]>;
+  getVenueManagerIds(venueIds: string[]): Promise<string[]>;
+  getManagersWithinGeofence(latitude: number, longitude: number, radiusMiles: number): Promise<User[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -144,6 +153,11 @@ export class PostgresStorage implements IStorage {
 
   async getVenue(id: string): Promise<Venue | undefined> {
     const [venue] = await db.select().from(venues).where(eq(venues.id, id)).limit(1);
+    return venue;
+  }
+
+  async getVenueByPlaceId(placeId: string): Promise<Venue | undefined> {
+    const [venue] = await db.select().from(venues).where(eq(venues.googlePlaceId, placeId)).limit(1);
     return venue;
   }
 
@@ -407,6 +421,65 @@ export class PostgresStorage implements IStorage {
 
   private toRad(degrees: number): number {
     return degrees * (Math.PI / 180);
+  }
+
+  // ============================================================================
+  // PUSH SUBSCRIPTION OPERATIONS
+  // ============================================================================
+
+  async getUserPushSubscriptions(userId: string): Promise<PushSubscription[]> {
+    return await db
+      .select()
+      .from(pushSubscriptions)
+      .where(and(
+        eq(pushSubscriptions.userId, userId),
+        eq(pushSubscriptions.isActive, true)
+      ));
+  }
+
+  async getVenueManagerIds(venueIds: string[]): Promise<string[]> {
+    if (venueIds.length === 0) return [];
+
+    const managers = await db
+      .select()
+      .from(users)
+      .where(and(
+        eq(users.role, 'manager'),
+        sql`${users.venueId} = ANY(${venueIds})`
+      ));
+
+    return managers.map(m => m.id);
+  }
+
+  async getManagersWithinGeofence(
+    latitude: number,
+    longitude: number,
+    radiusMiles: number
+  ): Promise<User[]> {
+    // Get all venues
+    const allVenues = await db.select().from(venues);
+
+    // Filter venues within the geofence
+    const venuesInRange = allVenues.filter((venue) => {
+      const venueLat = parseFloat(venue.latitude);
+      const venueLon = parseFloat(venue.longitude);
+      const distance = this.calculateDistance(latitude, longitude, venueLat, venueLon);
+      return distance <= radiusMiles;
+    });
+
+    if (venuesInRange.length === 0) return [];
+
+    // Get managers for these venues
+    const venueIds = venuesInRange.map(v => v.id);
+    const managers = await db
+      .select()
+      .from(users)
+      .where(and(
+        eq(users.role, 'manager'),
+        sql`${users.venueId} = ANY(${venueIds})`
+      ));
+
+    return managers;
   }
 }
 

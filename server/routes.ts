@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { attachUser, requireAuth, requireManager, requireStaff } from "./auth";
-import { insertIncidentSchema, insertAlertSchema } from "@shared/schema";
+import { insertIncidentSchema, insertAlertSchema, insertVenueSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -26,7 +26,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userId) {
         return res.status(401).json({ message: "Not authenticated" });
       }
-      
+
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -35,6 +35,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // ============================================================================
+  // USER ROUTES
+  // ============================================================================
+
+  // Set user's home venue
+  app.put("/api/users/home-venue", isAuthenticated, attachUser, async (req, res) => {
+    try {
+      if (!req.dbUser) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const { homeVenueId } = req.body;
+
+      // Verify venue exists
+      const venue = await storage.getVenue(homeVenueId);
+      if (!venue) {
+        return res.status(404).json({ message: "Venue not found" });
+      }
+
+      const updatedUser = await storage.updateUser(req.dbUser.id, {
+        homeVenueId,
+      });
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error setting home venue:", error);
+      res.status(500).json({ message: "Failed to set home venue" });
+    }
+  });
+
+  // Clear user's home venue
+  app.delete("/api/users/home-venue", isAuthenticated, attachUser, async (req, res) => {
+    try {
+      if (!req.dbUser) {
+        return res.status(401).json({ message: "Not authenticated" });
+      }
+
+      const updatedUser = await storage.updateUser(req.dbUser.id, {
+        homeVenueId: null,
+      });
+
+      res.json(updatedUser);
+    } catch (error) {
+      console.error("Error clearing home venue:", error);
+      res.status(500).json({ message: "Failed to clear home venue" });
     }
   });
 
@@ -156,23 +204,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Find or create venue (for home bar selection)
+  app.post("/api/venues/find-or-create", isAuthenticated, attachUser, async (req, res) => {
+    try {
+      const { googlePlaceId, name, address, latitude, longitude, geofenceRadiusMiles } = req.body;
+
+      // Try to find existing venue by Google Place ID
+      if (googlePlaceId) {
+        const existingVenue = await storage.getVenueByPlaceId(googlePlaceId);
+        if (existingVenue) {
+          return res.json(existingVenue);
+        }
+      }
+
+      // Create new venue
+      const venue = await storage.createVenue({
+        name,
+        address,
+        googlePlaceId,
+        latitude: latitude.toString(),
+        longitude: longitude.toString(),
+        geofenceRadiusMiles: geofenceRadiusMiles?.toString() || "5.0",
+      });
+
+      res.status(201).json(venue);
+    } catch (error) {
+      console.error("Error finding or creating venue:", error);
+      res.status(500).json({ message: "Failed to find or create venue" });
+    }
+  });
+
+  // Get user's home venue
+  app.get("/api/venues/home", isAuthenticated, attachUser, async (req, res) => {
+    try {
+      if (!req.dbUser?.homeVenueId) {
+        return res.json(null);
+      }
+
+      const venue = await storage.getVenue(req.dbUser.homeVenueId);
+      res.json(venue);
+    } catch (error) {
+      console.error("Error fetching home venue:", error);
+      res.status(500).json({ message: "Failed to fetch home venue" });
+    }
+  });
+
   // Update venue details
   app.patch("/api/venues/:id", isAuthenticated, attachUser, requireManager, async (req, res) => {
     try {
       const { id } = req.params;
-      
+
       // Ensure manager owns this venue
       if (req.dbUser?.venueId !== id) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      
+
       const updates = req.body;
       const venue = await storage.updateVenue(id, updates);
-      
+
       if (!venue) {
         return res.status(404).json({ message: "Venue not found" });
       }
-      
+
       res.json(venue);
     } catch (error) {
       console.error("Error updating venue:", error);
@@ -397,18 +490,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const incident = await storage.createIncident(incidentData);
 
-      // If it's a validated regulatory sting, create an alert for nearby venues
+      // Automatic Recertification: If staff member is involved in incident, trigger recertification
+      if (incident.reporterId && (incident.category === 'regulatory_sting' || incident.verificationStatus === 'validated')) {
+        const reporter = await storage.getUser(incident.reporterId);
+        if (reporter) {
+          const certification = await storage.getUserCertification(incident.reporterId);
+
+          if (certification) {
+            // Mark for recertification and increment incident count
+            await storage.updateCertification(certification.id, {
+              requiresRecertification: true,
+              recertificationReason: `Involved in ${incident.category === 'regulatory_sting' ? 'regulatory sting operation' : 'validated compliance incident'} on ${new Date(incident.incidentTimestamp).toLocaleDateString()}. Mandatory retraining required per compliance policy.`,
+              relatedIncidentCount: (certification.relatedIncidentCount || 0) + 1,
+              status: 'expired', // Revoke active certification
+            });
+
+            console.log(`Automatic recertification triggered for user ${incident.reporterId} due to incident ${incident.id}`);
+          }
+        }
+      }
+
+      // If it's a validated regulatory sting, create an alert and broadcast to nearby managers
       if (incident.verificationStatus === 'validated' && incident.category === 'regulatory_sting') {
         const alert = await storage.createAlert({
-          venueId: incident.venueId,
+          incidentId: incident.id,
           latitude: incident.latitude,
           longitude: incident.longitude,
           radiusMiles: '5.0',
-          severity: incident.severity === 'high' ? 'critical' : 'standard',
+          severity: 'critical',
           title: `Verified Regulatory Incident Nearby`,
-          message: `A verified regulatory incident was reported ${new Date(incident.incidentTime).toLocaleDateString()} in your area. Review protocols and update staff training as needed.`,
+          message: `A verified regulatory incident was reported ${new Date(incident.incidentTimestamp).toLocaleDateString()} in your area. Review protocols and update staff training as needed.`,
           isActive: true,
-          publishedAt: new Date(),
+        });
+
+        // Broadcast push notification to all managers within geofence
+        const { sendGeofencedAlert } = require("./pushNotifications");
+        const lat = parseFloat(incident.latitude);
+        const lon = parseFloat(incident.longitude);
+
+        sendGeofencedAlert(lat, lon, 5.0, {
+          title: '🚨 Verified Sting Operation Nearby',
+          body: `A regulatory incident was reported in your area on ${new Date(incident.incidentTimestamp).toLocaleDateString()}. Tap to review and update protocols.`,
+          icon: '/icon-192.png',
+          badge: '/badge-72.png',
+          tag: `alert-${alert.id}`,
+          requireInteraction: true,
+          data: {
+            url: '/alerts',
+            alertId: alert.id,
+            incidentId: incident.id,
+            type: 'regulatory_sting',
+          },
+          actions: [
+            {
+              action: 'view',
+              title: 'View Details',
+            },
+            {
+              action: 'dismiss',
+              title: 'Dismiss',
+            },
+          ],
+          vibrate: [200, 100, 200, 100, 200],
+        }).catch(err => {
+          console.error('Failed to send geofenced alert:', err);
         });
       }
 
@@ -481,110 +626,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // ============================================================================
-  // SEED DATA ROUTES (Development only)
+  // PUSH NOTIFICATION ROUTES
   // ============================================================================
 
-  if (process.env.NODE_ENV === 'development') {
-    app.post("/api/seed", async (req, res) => {
+  // Get VAPID public key for client-side push subscription
+  app.get("/api/push/vapid-public-key", (req, res) => {
+    const { getVAPIDPublicKey } = require("./pushNotifications");
+    res.json({ publicKey: getVAPIDPublicKey() });
+  });
+
+  // Register push subscription
+  app.post("/api/push/subscribe", isAuthenticated, attachUser, requireAuth, async (req, res) => {
+    try {
+      const { subscribeToPush } = require("./pushNotifications");
+      const { subscription } = req.body;
+
+      if (!subscription || !subscription.endpoint) {
+        return res.status(400).json({ message: "Invalid subscription data" });
+      }
+
+      await subscribeToPush(
+        req.dbUser!.id,
+        subscription,
+        req.headers['user-agent']
+      );
+
+      res.json({ success: true, message: "Push subscription registered" });
+    } catch (error) {
+      console.error("Error registering push subscription:", error);
+      res.status(500).json({ message: "Failed to register push subscription" });
+    }
+  });
+
+  // Unsubscribe from push notifications
+  app.post("/api/push/unsubscribe", isAuthenticated, attachUser, requireAuth, async (req, res) => {
+    try {
+      const { unsubscribeFromPush } = require("./pushNotifications");
+      const { endpoint } = req.body;
+
+      if (!endpoint) {
+        return res.status(400).json({ message: "Endpoint is required" });
+      }
+
+      await unsubscribeFromPush(endpoint);
+      res.json({ success: true, message: "Push subscription removed" });
+    } catch (error) {
+      console.error("Error unsubscribing from push:", error);
+      res.status(500).json({ message: "Failed to unsubscribe from push" });
+    }
+  });
+
+  // Send test notification (for testing purposes)
+  app.post("/api/push/test", isAuthenticated, attachUser, requireAuth, async (req, res) => {
+    try {
+      const { sendTestNotification } = require("./pushNotifications");
+      const result = await sendTestNotification(req.dbUser!.id);
+      res.json({ success: true, result });
+    } catch (error) {
+      console.error("Error sending test notification:", error);
+      res.status(500).json({ message: "Failed to send test notification" });
+    }
+  });
+
+  // ============================================================================
+  // SEED DATA ROUTES
+  // ============================================================================
+
+  app.post("/api/seed", async (req, res) => {
       try {
-        // Create sample training modules if they don't exist
+        // Import comprehensive training content
+        const { trainingModules, quizQuestions } = await import("./trainingContent");
+
+        // Create training modules if they don't exist
         const existingModules = await storage.getAllTrainingModules();
-        
+
         if (existingModules.length === 0) {
-          const modules = [
-            {
-              moduleNumber: 1,
-              title: "Sting Operations & Legal Framework",
-              description: "Understanding regulatory compliance enforcement and your rights during sting operations",
-              content: "<h2>Introduction to Sting Operations</h2><p>This module covers the legal framework around sting operations in the hospitality industry, your rights as a venue operator, and best practices for compliance.</p><h3>Key Topics:</h3><ul><li>What is a sting operation?</li><li>Legal boundaries and your rights</li><li>Documentation requirements</li><li>Staff training protocols</li></ul>",
-              estimatedMinutes: 25,
-              orderIndex: 1,
-              isRequired: true,
-            },
-            {
-              moduleNumber: 2,
-              title: "ID Verification Best Practices",
-              description: "Comprehensive guide to proper ID checking procedures and spotting fake IDs",
-              content: "<h2>ID Verification Mastery</h2><p>Learn industry-standard techniques for verifying identification documents and protecting your venue from underage service violations.</p><h3>Key Topics:</h3><ul><li>Acceptable forms of ID</li><li>Security features to check</li><li>Common fake ID indicators</li><li>When to refuse service</li></ul>",
-              estimatedMinutes: 30,
-              orderIndex: 2,
-              isRequired: true,
-            },
-            {
-              moduleNumber: 3,
-              title: "Responsible Service & Over-Service Prevention",
-              description: "Techniques for identifying intoxication and managing service responsibly",
-              content: "<h2>Responsible Service Protocols</h2><p>Master the skills needed to identify signs of intoxication and implement responsible service practices that protect both customers and your business.</p><h3>Key Topics:</h3><ul><li>Signs of intoxication</li><li>Service refusal techniques</li><li>De-escalation strategies</li><li>Documentation procedures</li></ul>",
-              estimatedMinutes: 35,
-              orderIndex: 3,
-              isRequired: true,
-            },
-            {
-              moduleNumber: 4,
-              title: "Incident Response & Documentation",
-              description: "Step-by-step procedures for handling regulatory incidents and maintaining compliance records",
-              content: "<h2>Incident Management</h2><p>Learn the critical procedures for responding to regulatory incidents, proper documentation practices, and maintaining defensible compliance records.</p><h3>Key Topics:</h3><ul><li>Immediate response procedures</li><li>Evidence preservation</li><li>Report writing best practices</li><li>Follow-up protocols</li></ul>",
-              estimatedMinutes: 20,
-              orderIndex: 4,
-              isRequired: true,
-            },
-          ];
+          for (const moduleData of trainingModules) {
+            const created = await storage.createTrainingModule(moduleData);
 
-          for (const module of modules) {
-            const created = await storage.createTrainingModule(module);
-            
-            // Create sample quiz questions for each module
-            const sampleQuestions = [
-              {
+            // Create quiz questions for this module
+            const moduleQuestions = quizQuestions[moduleData.moduleNumber as keyof typeof quizQuestions] || [];
+            for (const question of moduleQuestions) {
+              await storage.createQuizQuestion({
                 moduleId: created.id,
-                questionText: `What is the most important thing to do when you suspect a regulatory compliance issue in ${module.title}?`,
-                questionType: 'multiple_choice',
-                options: [
-                  'Immediately call the police',
-                  'Document everything and follow established protocols',
-                  'Confront the individual directly',
-                  'Ignore it if you\'re not sure'
-                ],
-                correctAnswer: 'Document everything and follow established protocols',
-                explanation: 'Proper documentation and following established protocols protects both you and your venue legally.',
-                orderIndex: 1,
-              },
-              {
-                moduleId: created.id,
-                questionText: `Which of the following is NOT a recommended practice for ${module.title}?`,
-                questionType: 'multiple_choice',
-                options: [
-                  'Maintaining detailed records',
-                  'Regular staff training updates',
-                  'Making assumptions without verification',
-                  'Following documented procedures'
-                ],
-                correctAnswer: 'Making assumptions without verification',
-                explanation: 'Always verify before acting and never make assumptions in compliance matters.',
-                orderIndex: 2,
-              },
-              {
-                moduleId: created.id,
-                questionText: `In a scenario related to ${module.title}, what should be your first priority?`,
-                questionType: 'multiple_choice',
-                options: [
-                  'Customer satisfaction',
-                  'Legal compliance and safety',
-                  'Speed of service',
-                  'Avoiding confrontation'
-                ],
-                correctAnswer: 'Legal compliance and safety',
-                explanation: 'Compliance and safety always come first, protecting both staff and customers.',
-                orderIndex: 3,
-              },
-            ];
-
-            for (const question of sampleQuestions) {
-              await storage.createQuizQuestion(question);
+                ...question,
+              });
             }
           }
 
-          res.json({ message: "Seed data created successfully", moduleCount: modules.length });
+          res.json({
+            message: "Comprehensive training content created successfully",
+            moduleCount: trainingModules.length,
+            totalQuestions: Object.values(quizQuestions).reduce((sum, q) => sum + q.length, 0)
+          });
         } else {
           res.json({ message: "Modules already exist", moduleCount: existingModules.length });
         }
@@ -593,7 +727,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.status(500).json({ message: "Failed to seed data" });
       }
     });
-  }
 
   const httpServer = createServer(app);
   return httpServer;

@@ -39,8 +39,8 @@ const managerNavItems = [
 
 // Staff navigation items
 const staffNavItems = [
-  { path: "/training", label: "Training", icon: BookOpen, activeIcon: BookOpen },
   { path: "/status", label: "My Status", icon: ShieldCheck, activeIcon: ShieldCheck },
+  { path: "/training", label: "Training", icon: BookOpen, activeIcon: BookOpen },
   { path: "/report", label: "Report", icon: FileText, activeIcon: FileText },
   { path: "/account", label: "Account", icon: UserCircle, activeIcon: UserCircle },
 ];
@@ -72,7 +72,7 @@ function Router() {
   }
 
   // Determine default route based on role
-  const defaultRoute = isManager ? "/dashboard" : "/training";
+  const defaultRoute = isManager ? "/dashboard" : "/status";
 
   // Check if current route is accessible by user's role
   const isManagerRoute = location.startsWith("/dashboard") || location.startsWith("/staff") || location.startsWith("/alerts");
@@ -98,16 +98,14 @@ function Router() {
         {/* Staff Routes */}
         {isStaff && (
           <>
-            <Route path="/training">
-              <Redirect to="/status" />
-            </Route>
-            <Route path="/status" component={StaffDashboard} />
+            <Route path="/training" component={TrainingDashboard} />
+            <Route path="/status" component={StatusPage} />
             <Route path="/training/:moduleId" component={TrainingModuleViewer} />
           </>
         )}
 
         {/* Common Routes (both roles) */}
-        <Route path="/report" component={IncidentReportForm} />
+        <Route path="/report" component={StingReportForm} />
         <Route path="/account" component={AccountPage} />
 
         {/* 404 Fallback */}
@@ -128,6 +126,9 @@ function Router() {
           className="bg-destructive hover:bg-destructive text-destructive-foreground"
         />
       )}
+
+      {/* PWA Install Prompt */}
+      <PWAInstallPrompt />
     </>
   );
 }

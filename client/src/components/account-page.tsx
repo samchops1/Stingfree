@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { User, Building2, LogOut, Shield } from "lucide-react";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { HomeBarSettings } from "@/components/home-bar-settings";
 
 export function AccountPage() {
   const { user, isManager } = useAuth();
@@ -63,6 +64,9 @@ export function AccountPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Home Bar Settings (Staff Only) */}
+        {!isManager && <HomeBarSettings />}
 
         {/* Settings/Actions */}
         <Card>

@@ -69,7 +69,8 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: userRoleEnum("role").notNull().default('staff'),
-  venueId: varchar("venue_id"), // Foreign key to venues
+  venueId: varchar("venue_id"), // Foreign key to venues (for managers)
+  homeVenueId: varchar("home_venue_id"), // Home bar for staff members
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -79,6 +80,7 @@ export const venues = pgTable("venues", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: varchar("name").notNull(),
   legalEntityId: varchar("legal_entity_id"),
+  googlePlaceId: varchar("google_place_id"), // Google Maps Place ID
   address: text("address").notNull(),
   city: varchar("city"),
   state: varchar("state"),
@@ -189,6 +191,19 @@ export const alerts = pgTable("alerts", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Push notification subscriptions for PWA
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dhKey: text("p256dh_key").notNull(),
+  authKey: text("auth_key").notNull(),
+  userAgent: text("user_agent"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ============================================================================
 // RELATIONS
 // ============================================================================
@@ -204,6 +219,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   }),
   progress: many(userProgress),
   incidents: many(incidents),
+  pushSubscriptions: many(pushSubscriptions),
 }));
 
 export const venuesRelations = relations(venues, ({ many }) => ({
@@ -260,6 +276,13 @@ export const alertsRelations = relations(alerts, ({ one }) => ({
   incident: one(incidents, {
     fields: [alerts.incidentId],
     references: [incidents.id],
+  }),
+}));
+
+export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({
+  user: one(users, {
+    fields: [pushSubscriptions.userId],
+    references: [users.id],
   }),
 }));
 
@@ -330,3 +353,12 @@ export const insertAlertSchema = createInsertSchema(alerts).omit({
 });
 export type InsertAlert = z.infer<typeof insertAlertSchema>;
 export type Alert = typeof alerts.$inferSelect;
+
+// Push subscription types
+export const insertPushSubscriptionSchema = createInsertSchema(pushSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPushSubscription = z.infer<typeof insertPushSubscriptionSchema>;
+export type PushSubscription = typeof pushSubscriptions.$inferSelect;
