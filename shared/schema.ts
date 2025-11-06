@@ -137,6 +137,7 @@ export const userProgress = pgTable("user_progress", {
   quizAttempts: integer("quiz_attempts").default(0),
   passed: boolean("passed").default(false),
   lastAccessedAt: timestamp("last_accessed_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Staff certifications with expiration tracking
@@ -173,6 +174,7 @@ export const incidents = pgTable("incidents", {
   reportedAt: timestamp("reported_at").defaultNow(),
   validatedAt: timestamp("validated_at"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Geofenced alerts for managers
@@ -189,6 +191,7 @@ export const alerts = pgTable("alerts", {
   expiresAt: timestamp("expires_at"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Push notification subscriptions for PWA
@@ -292,6 +295,7 @@ export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one })
 
 // User types
 export type UpsertUser = typeof users.$inferInsert;
+export type InsertUser = UpsertUser; // Alias for compatibility
 export type User = typeof users.$inferSelect;
 
 // Venue types

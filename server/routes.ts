@@ -168,7 +168,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create a new alert (manager only)
   app.post("/api/manager/alerts", isAuthenticated, attachUser, requireManager, async (req, res) => {
     try {
-      const alertData = insertAlertSchema.omit({ id: true }).parse(req.body);
+      const alertData = insertAlertSchema.omit({ id: true, createdAt: true, updatedAt: true, publishedAt: true }).parse(req.body);
       const alert = await storage.createAlert(alertData);
       res.status(201).json(alert);
     } catch (error) {
@@ -444,8 +444,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (existingCert) {
             await storage.updateCertification(existingCert.id, {
               status: 'active',
-              lastCertifiedAt: new Date(),
-              expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+              certifiedAt: new Date(),
+              expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
               requiresRecertification: false,
               recertificationReason: null,
             });
@@ -453,9 +453,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.createCertification({
               userId: req.dbUser!.id,
               status: 'active',
-              lastCertifiedAt: new Date(),
-              expirationDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-              incidentCount: 0,
+              certifiedAt: new Date(),
+              expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+              relatedIncidentCount: 0,
               requiresRecertification: false,
             });
           }
@@ -482,9 +482,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/incidents", isAuthenticated, attachUser, requireAuth, async (req, res) => {
     try {
       // Validate input
-      const incidentData = insertIncidentSchema.omit({ id: true, createdAt: true, updatedAt: true }).parse({
+      const incidentData = insertIncidentSchema.omit({ id: true, createdAt: true, updatedAt: true, reportedAt: true, validatedAt: true }).parse({
         ...req.body,
-        reportedBy: req.dbUser!.id,
+        reporterId: req.dbUser!.id,
         venueId: req.dbUser!.venueId || req.body.venueId,
       });
 
@@ -552,7 +552,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             },
           ],
           vibrate: [200, 100, 200, 100, 200],
-        }).catch(err => {
+        }).catch((err: any) => {
           console.error('Failed to send geofenced alert:', err);
         });
       }
@@ -578,7 +578,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user has access to this incident
-      if (req.dbUser!.role === 'staff' && incident.reportedBy !== req.dbUser!.id) {
+      if (req.dbUser!.role === 'staff' && incident.reporterId !== req.dbUser!.id) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
