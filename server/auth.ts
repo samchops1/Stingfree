@@ -13,6 +13,7 @@ declare global {
         profileImageUrl: string | null;
         role: "manager" | "staff";
         venueId: string | null;
+        homeVenueId: string | null;
       };
     }
   }
@@ -39,6 +40,7 @@ export async function attachUser(req: Request, res: Response, next: NextFunction
           profileImageUrl: user.profileImageUrl,
           role: user.role,
           venueId: user.venueId,
+          homeVenueId: user.homeVenueId,
         };
       }
     }

@@ -10,7 +10,7 @@ const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'VAPID_PRIVATE_KEY_PL
 const VAPID_MAILTO = process.env.VAPID_MAILTO || 'mailto:support@stingfree.app';
 
 // Configure web-push
-webpush.setVAPIDDetails(
+webpush.setVapidDetails(
   VAPID_MAILTO,
   VAPID_PUBLIC_KEY,
   VAPID_PRIVATE_KEY

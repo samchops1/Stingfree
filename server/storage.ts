@@ -262,7 +262,7 @@ export class PostgresStorage implements IStorage {
   ): Promise<UserProgress | undefined> {
     const [progress] = await db
       .update(userProgress)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updates)
       .where(eq(userProgress.id, id))
       .returning();
     return progress;
@@ -325,14 +325,14 @@ export class PostgresStorage implements IStorage {
       .select()
       .from(incidents)
       .where(eq(incidents.venueId, venueId))
-      .orderBy(desc(incidents.incidentTime))
+      .orderBy(desc(incidents.incidentTimestamp))
       .limit(limit);
   }
 
   async updateIncident(id: string, updates: Partial<InsertIncident>): Promise<Incident | undefined> {
     const [incident] = await db
       .update(incidents)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updates)
       .where(eq(incidents.id, id))
       .returning();
     return incident;
@@ -392,7 +392,7 @@ export class PostgresStorage implements IStorage {
   async updateAlert(id: string, updates: Partial<InsertAlert>): Promise<Alert | undefined> {
     const [alert] = await db
       .update(alerts)
-      .set({ ...updates, updatedAt: new Date() })
+      .set(updates)
       .where(eq(alerts.id, id))
       .returning();
     return alert;
