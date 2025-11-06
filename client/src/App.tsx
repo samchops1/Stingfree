@@ -16,6 +16,7 @@ import { IncidentReportForm } from "@/components/incident-report-form";
 import { AlertsPage } from "@/components/alerts-page";
 import { AccountPage } from "@/components/account-page";
 import { VenueOnboarding } from "@/components/venue-onboarding";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 import NotFound from "@/pages/not-found";
 import { 
   LayoutDashboard, 
@@ -98,14 +99,14 @@ function Router() {
         {/* Staff Routes */}
         {isStaff && (
           <>
-            <Route path="/training" component={TrainingDashboard} />
-            <Route path="/status" component={StatusPage} />
+            <Route path="/training" component={StaffDashboard} />
+            <Route path="/status" component={StaffDashboard} />
             <Route path="/training/:moduleId" component={TrainingModuleViewer} />
           </>
         )}
 
         {/* Common Routes (both roles) */}
-        <Route path="/report" component={StingReportForm} />
+        <Route path="/report" component={IncidentReportForm} />
         <Route path="/account" component={AccountPage} />
 
         {/* 404 Fallback */}

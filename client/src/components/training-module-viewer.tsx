@@ -2,14 +2,17 @@ import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { TopAppBar } from "@/components/ui/top-app-bar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, XCircle, ChevronLeft, BookOpen } from "lucide-react";
-import { useState } from "react";
+import { CheckCircle2, XCircle, ChevronLeft, BookOpen, GraduationCap, Clock } from "lucide-react";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import type { TrainingModule, QuizQuestion, UserProgress } from "@shared/schema";
 
 interface ModuleData {
@@ -247,56 +250,129 @@ export function TrainingModuleViewer() {
 
   // Module Content View
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 border-b border-border">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-500/10 via-background to-purple-500/10 pb-20">
+      <div className="sticky top-0 z-40 bg-black/20 backdrop-blur-2xl border-b border-white/10">
         <div className="flex items-center h-14 px-4">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => navigate("/training")}
             data-testid="button-back"
+            className="text-white hover:bg-white/10"
           >
             <ChevronLeft className="w-5 h-5" />
           </Button>
-          <h1 className="text-lg font-semibold ml-2 truncate">Module {module.moduleNumber}</h1>
+          <h1 className="text-lg font-semibold ml-2 truncate text-white">Module {module.moduleNumber}</h1>
         </div>
       </div>
 
       <div className="px-4 py-6 max-w-3xl mx-auto space-y-6">
         {/* Module Header */}
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-start gap-4">
-              <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                isCompleted ? 'bg-success/10 text-success' : 'bg-primary/10 text-primary'
-              }`}>
-                {isCompleted ? (
-                  <CheckCircle2 className="w-6 h-6" />
-                ) : (
-                  <BookOpen className="w-6 h-6" />
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white/10 backdrop-blur-2xl rounded-3xl p-6 border border-white/20 shadow-xl"
+        >
+          <div className="flex items-start gap-4">
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${
+              isCompleted
+                ? 'bg-gradient-to-br from-green-500 to-green-600'
+                : 'bg-gradient-to-br from-indigo-500 to-purple-500'
+            }`}>
+              {isCompleted ? (
+                <CheckCircle2 className="w-8 h-8 text-white" />
+              ) : (
+                <GraduationCap className="w-8 h-8 text-white" />
+              )}
+            </div>
+
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold mb-2 text-white">{module.title}</h2>
+              <p className="text-sm text-white/70 mb-3">{module.description}</p>
+              <div className="flex items-center gap-4 text-sm text-white/60">
+                <span className="flex items-center gap-1">
+                  <Clock className="w-4 h-4" />
+                  {module.estimatedMinutes} min
+                </span>
+                {isCompleted && (
+                  <span className="text-green-400 font-medium flex items-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Completed
+                  </span>
                 )}
               </div>
-              
-              <div className="flex-1">
-                <h2 className="text-xl font-bold mb-2">{module.title}</h2>
-                <p className="text-sm text-muted-foreground mb-3">{module.description}</p>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>{module.estimatedMinutes} minutes</span>
-                  {isCompleted && (
-                    <span className="text-success font-medium">✓ Completed</span>
-                  )}
-                </div>
-              </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </motion.div>
 
         {/* Module Content */}
-        <Card>
-          <CardContent className="p-6 prose prose-sm max-w-none">
-            <div dangerouslySetInnerHTML={{ __html: module.content }} />
-          </CardContent>
-        </Card>
+        <div className="bg-white/10 backdrop-blur-2xl rounded-3xl p-8 border border-white/20 shadow-xl">
+          <div className="prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                h1: ({ children }) => (
+                  <h1 className="text-3xl font-bold text-white mb-6 mt-8 pb-3 border-b-2 border-white/20">
+                    {children}
+                  </h1>
+                ),
+                h2: ({ children }) => (
+                  <h2 className="text-2xl font-bold text-white mb-4 mt-6">
+                    {children}
+                  </h2>
+                ),
+                h3: ({ children }) => (
+                  <h3 className="text-xl font-semibold text-white mb-3 mt-5">
+                    {children}
+                  </h3>
+                ),
+                p: ({ children }) => (
+                  <p className="text-white/90 leading-relaxed mb-4">
+                    {children}
+                  </p>
+                ),
+                ul: ({ children }) => (
+                  <ul className="list-disc list-inside space-y-2 mb-4 text-white/90">
+                    {children}
+                  </ul>
+                ),
+                ol: ({ children }) => (
+                  <ol className="list-decimal list-inside space-y-2 mb-4 text-white/90">
+                    {children}
+                  </ol>
+                ),
+                li: ({ children }) => (
+                  <li className="leading-relaxed">
+                    {children}
+                  </li>
+                ),
+                strong: ({ children }) => (
+                  <strong className="text-white font-bold">
+                    {children}
+                  </strong>
+                ),
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-4 border-blue-500/50 pl-4 py-2 my-4 bg-blue-500/10 rounded-r-lg text-white/90">
+                    {children}
+                  </blockquote>
+                ),
+                code: ({ children }) => (
+                  <code className="bg-black/30 px-2 py-1 rounded text-sm text-blue-300 font-mono">
+                    {children}
+                  </code>
+                ),
+                pre: ({ children }) => (
+                  <pre className="bg-black/40 p-4 rounded-lg overflow-x-auto my-4 border border-white/10">
+                    {children}
+                  </pre>
+                ),
+              }}
+            >
+              {module.content}
+            </ReactMarkdown>
+          </div>
+        </div>
 
         {/* Action Buttons */}
         <div className="space-y-3">

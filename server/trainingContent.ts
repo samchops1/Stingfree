@@ -471,11 +471,11 @@ While sting operations and external compliance are critical, **internal theft re
 - **Random Audits**: Spot-check drawer vs. POS sales
 
 **Detection Formula:**
-```
+\`\`\`
 Expected Sales = (Bottles Used × Ounces per Bottle) ÷ Pour Size
 Actual Sales = POS Total Sales for that Spirit
 Discrepancy = Expected - Actual
-```
+\`\`\`
 
 If discrepancy is >10%, investigate immediately.
 
@@ -865,7 +865,7 @@ The best time to prepare for a regulatory incident is **before it happens**. Ven
 - Every customer complaint
 
 **Template Format:**
-```
+\`\`\`
 Date/Time: [timestamp]
 Employee: [name]
 Incident Type: [service refusal/suspicious ID/removal]
@@ -873,7 +873,7 @@ Description: [details]
 Outcome: [action taken]
 Witness: [name]
 Manager Notified: [yes/no + name]
-```
+\`\`\`
 
 **Why It Matters:**
 - Proves you're actively monitoring compliance

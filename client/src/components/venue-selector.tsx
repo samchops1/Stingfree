@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Loader } from "@googlemaps/js-api-loader";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,75 +40,86 @@ export function VenueSelector({ onVenueSelect, initialVenue, variant = "onboardi
 
   // Initialize Google Maps
   useEffect(() => {
-    const loader = new Loader({
-      apiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-      version: "weekly",
-      libraries: ["places"],
-    });
-
-    loader.load().then(async () => {
+    const initMap = async () => {
       if (!mapRef.current) return;
 
-      // Get user's current location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const userPos = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-            };
-            setUserLocation(userPos);
+      try {
+        // Load Google Maps script dynamically
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=places`;
+        script.async = true;
+        script.defer = true;
 
-            // Initialize map centered on user location
-            const googleMap = new google.maps.Map(mapRef.current!, {
-              center: userPos,
-              zoom: 15,
-              mapTypeControl: false,
-              fullscreenControl: false,
-              streetViewControl: false,
-              styles: [
-                {
-                  featureType: "poi",
-                  elementType: "labels",
-                  stylers: [{ visibility: "off" }],
-                },
-              ],
-            });
+        script.onload = () => {
+          // Get user's current location
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                const userPos = {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude,
+                };
+                setUserLocation(userPos);
 
-            setMap(googleMap);
+                // Initialize map centered on user location
+                const googleMap = new google.maps.Map(mapRef.current!, {
+                  center: userPos,
+                  zoom: 15,
+                  mapTypeControl: false,
+                  fullscreenControl: false,
+                  streetViewControl: false,
+                  styles: [
+                    {
+                      featureType: "poi",
+                      elementType: "labels",
+                      stylers: [{ visibility: "off" }],
+                    },
+                  ],
+                });
 
-            // Add current location marker
-            new google.maps.Marker({
-              position: userPos,
-              map: googleMap,
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 8,
-                fillColor: "#3b82f6",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
+                setMap(googleMap);
+
+                // Add current location marker
+                new google.maps.Marker({
+                  position: userPos,
+                  map: googleMap,
+                  icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 8,
+                    fillColor: "#3b82f6",
+                    fillOpacity: 1,
+                    strokeColor: "#ffffff",
+                    strokeWeight: 2,
+                  },
+                });
+
+                setIsLoading(false);
               },
-            });
-
-            setIsLoading(false);
-          },
-          () => {
-            // Fallback to default location if geolocation fails
-            const defaultPos = { lat: 40.7128, lng: -74.006 }; // New York
-            const googleMap = new google.maps.Map(mapRef.current!, {
-              center: defaultPos,
-              zoom: 12,
-              mapTypeControl: false,
-              fullscreenControl: false,
-              streetViewControl: false,
-            });
-            setMap(googleMap);
-            setIsLoading(false);
+              () => {
+                // Fallback to default location if geolocation fails
+                const defaultPos = { lat: 40.7128, lng: -74.006 }; // New York
+                const googleMap = new google.maps.Map(mapRef.current!, {
+                  center: defaultPos,
+                  zoom: 12,
+                  mapTypeControl: false,
+                  fullscreenControl: false,
+                  streetViewControl: false,
+                });
+                setMap(googleMap);
+                setIsLoading(false);
+              }
+            );
           }
-        );
+        };
+
+        document.head.appendChild(script);
+      } catch (error) {
+        console.error('Error loading Google Maps:', error);
+        setIsLoading(false);
       }
-    });
+    };
+
+    initMap();
   }, []);
 
   // Initialize SearchBox
