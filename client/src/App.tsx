@@ -5,12 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/useAuth";
 import { isUnauthorizedError } from "@/lib/authUtils";
-import { BottomNav } from "@/components/ui/bottom-nav";
+import { BottomNavV2 as BottomNav } from "@/components/ui/bottom-nav-v2";
 import { FAB } from "@/components/ui/fab";
-import { LandingPage } from "@/components/landing-page";
+import { LandingPageV2 } from "@/components/landing-page-v2";
 import { ManagerDashboard } from "@/components/manager/dashboard";
 import { StaffManagement } from "@/components/manager/staff-management";
-import { StaffDashboard } from "@/components/staff/dashboard";
+import { StatusPage } from "@/components/staff/status-page";
+import { TrainingListPage } from "@/components/staff/training-list-page";
 import { TrainingModuleViewer } from "@/components/training-module-viewer";
 import { IncidentReportForm } from "@/components/incident-report-form";
 import { AlertsPage } from "@/components/alerts-page";
@@ -64,7 +65,7 @@ function Router() {
 
   // Show landing page if not authenticated
   if (!isAuthenticated) {
-    return <LandingPage />;
+    return <LandingPageV2 />;
   }
 
   // Show venue onboarding for managers without a venue
@@ -99,8 +100,8 @@ function Router() {
         {/* Staff Routes */}
         {isStaff && (
           <>
-            <Route path="/training" component={StaffDashboard} />
-            <Route path="/status" component={StaffDashboard} />
+            <Route path="/training" component={TrainingListPage} />
+            <Route path="/status" component={StatusPage} />
             <Route path="/training/:moduleId" component={TrainingModuleViewer} />
           </>
         )}
