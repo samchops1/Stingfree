@@ -13,7 +13,7 @@ import { StaffManagement } from "@/components/manager/staff-management";
 import { StatusPage } from "@/components/staff/status-page";
 import { TrainingListPage } from "@/components/staff/training-list-page";
 import { TrainingModuleViewer } from "@/components/training-module-viewer";
-import { IncidentReportForm } from "@/components/incident-report-form";
+import { IncidentReportFormV3 } from "@/components/incident-report-form-v3";
 import { AlertsPage } from "@/components/alerts-page";
 import { AccountPage } from "@/components/account-page";
 import { VenueOnboarding } from "@/components/venue-onboarding";
@@ -107,7 +107,7 @@ function Router() {
         )}
 
         {/* Common Routes (both roles) */}
-        <Route path="/report" component={IncidentReportForm} />
+        <Route path="/report" component={IncidentReportFormV3} />
         <Route path="/account" component={AccountPage} />
 
         {/* 404 Fallback */}
