@@ -5,7 +5,7 @@ import { Shield, Zap, Award, TrendingUp, Sparkles, CheckCircle, ArrowRight, Brai
 
 export function LandingPageV2() {
   const handleLogin = () => {
-    window.location.href = "/login";
+    window.location.href = "/api/login";
   };
 
   const features = [
