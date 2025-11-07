@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { TopAppBar } from "@/components/ui/top-app-bar";
 import { CheckCircle2, XCircle, ChevronLeft, BookOpen, GraduationCap, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
