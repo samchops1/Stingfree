@@ -1,60 +1,203 @@
 // Falcon DLP content script.
-// Runs at document_start and hooks paste in the CAPTURE phase, so we see the
-// text before the AI site's own paste handler does. If the local agent says
-// "block", we cancel the paste and show a banner offering a sanitized paste
-// or a logged override.
+//
+// Two browser capture points, both in the CAPTURE phase so we act before the
+// AI site's own handlers:
+//   1. PASTE  — scan the pasted text before the site sees it.
+//   2. SUBMIT — scan the whole composer when the user presses Enter or clicks
+//               the send button (closes the "typed it, then hit Send" gap that
+//               paste-only scanning misses).
+//
+// On a block we cancel the action and show a banner with "Paste sanitized"
+// (swap in the redacted text) and "Override and log" (proceed, with a logged
+// justification).
+//
+// HONEST LIMIT: submit interception is best-effort and site-specific. Sending
+// a clean message programmatically relies on finding the send button (or
+// re-dispatching Enter); the heuristics below cover ChatGPT/Claude/Gemini/
+// Copilot but should be re-verified when those UIs change. The paste hook is
+// the reliable path; on-submit is defense-in-depth.
 
 const AGENT = "http://127.0.0.1:8765";
+
+// Send-button heuristics, most specific first.
+const SEND_SELECTORS = [
+  '[data-testid="send-button"]',
+  'button[data-testid="send-button"]',
+  'button[aria-label="Send message"]',
+  'button[aria-label*="Send" i]',
+  'button[aria-label*="Submit" i]',
+];
+
+// --- helpers ----------------------------------------------------------------
+
+function isEditable(el) {
+  if (!el) return false;
+  const tag = el.tagName;
+  return el.isContentEditable || tag === "TEXTAREA" || (tag === "INPUT" && el.type === "text");
+}
+
+// Walk up from a node to the nearest editable (composers nest spans/divs).
+function editableFrom(node) {
+  let el = node;
+  while (el && el !== document.body) {
+    if (isEditable(el)) return el;
+    el = el.parentElement;
+  }
+  return isEditable(document.activeElement) ? document.activeElement : null;
+}
+
+function readText(el) {
+  if (!el) return "";
+  if (el.isContentEditable) return el.innerText || "";
+  return el.value || "";
+}
+
+function replaceText(el, value) {
+  if (!el) return;
+  el.focus();
+  try {
+    if (el.isContentEditable) {
+      document.execCommand("selectAll", false, null);
+      document.execCommand("insertText", false, value);
+      return;
+    }
+    el.select();
+    if (document.execCommand("insertText", false, value)) return;
+  } catch (_) {
+    /* fall through */
+  }
+  if ("value" in el) {
+    el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+}
+
+function findSendButton(fromEl) {
+  for (const sel of SEND_SELECTORS) {
+    const btn = document.querySelector(sel);
+    if (btn && !btn.disabled) return btn;
+  }
+  return null;
+}
+
+async function scan(text) {
+  try {
+    return await fetch(`${AGENT}/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, url: location.href }),
+    }).then((r) => r.json());
+  } catch (_) {
+    // Agent down: fail OPEN for the prototype (don't wedge the browser).
+    return null;
+  }
+}
+
+// Programmatically send a message we've decided is clean/overridden.
+let passThrough = false;
+function performSend(editable) {
+  const btn = findSendButton(editable);
+  if (btn) {
+    btn.click();
+    return;
+  }
+  // Fallback: re-dispatch Enter, flagged so our own handler lets it through.
+  passThrough = true;
+  const ev = new KeyboardEvent("keydown", {
+    key: "Enter",
+    code: "Enter",
+    keyCode: 13,
+    which: 13,
+    bubbles: true,
+    cancelable: true,
+  });
+  (editable || document.activeElement)?.dispatchEvent(ev);
+  passThrough = false;
+}
+
+// --- PASTE vector -----------------------------------------------------------
 
 document.addEventListener(
   "paste",
   async (e) => {
     const text = (e.clipboardData || window.clipboardData).getData("text");
     if (!text || text.length < 8) return;
-
-    // Remember where the paste was headed so the buttons can act on it.
     const target = e.target;
 
-    let res = null;
-    try {
-      res = await fetch(`${AGENT}/scan`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, url: location.href }),
-      }).then((r) => r.json());
-    } catch (_) {
-      // Agent down: fail OPEN for the prototype (don't wedge the user's
-      // browser). The URLBlocklist policy is the hard backstop; this hook is
-      // the "allow but police" layer. Backend availability is what the popup
-      // connection dot surfaces.
-      return;
-    }
-
-    if (res && res.verdict === "block") {
+    const res = await scan(text);
+    if (res && res.action === "block") {
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
-      showBanner(res.findings, res.redacted, text, target);
+      showBanner({ findings: res.findings, redacted: res.redacted, original: text, editable: editableFrom(target) });
     }
   },
   true
 );
 
-// Insert text into the element the paste was aimed at. execCommand("insertText")
-// works for both <textarea>/<input> and contenteditable composers (which is
-// what ChatGPT, Claude, and Gemini use), and keeps the site's input events firing.
-function insertText(target, value) {
-  if (target && typeof target.focus === "function") target.focus();
-  const ok = document.execCommand && document.execCommand("insertText", false, value);
-  if (ok) return;
-  // Fallback for plain form fields if execCommand is unavailable.
-  if (target && "value" in target) {
-    const start = target.selectionStart ?? target.value.length;
-    const end = target.selectionEnd ?? target.value.length;
-    target.value = target.value.slice(0, start) + value + target.value.slice(end);
-    target.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-}
+// --- SUBMIT vector ----------------------------------------------------------
+
+document.addEventListener(
+  "keydown",
+  async (e) => {
+    if (passThrough) return; // our own re-dispatch of a cleared message
+    if (e.key !== "Enter" || e.shiftKey || e.isComposing) return;
+
+    const editable = editableFrom(e.target);
+    if (!editable) return;
+    const text = readText(editable).trim();
+    if (text.length < 8) return;
+
+    // We can't scan synchronously, so stop this send and decide after.
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const res = await scan(text);
+    if (!res) {
+      // Agent down: fail open — let the message go.
+      performSend(editable);
+      return;
+    }
+    if (res.action === "block" || res.action === "redact") {
+      showBanner({ findings: res.findings, redacted: res.redacted, original: text, editable, isSubmit: true });
+    } else {
+      performSend(editable); // clean (allow/monitor)
+    }
+  },
+  true
+);
+
+// Also catch clicks on the send button (typed text, sent by mouse).
+document.addEventListener(
+  "click",
+  async (e) => {
+    if (passThrough) return;
+    const btn = e.target.closest && e.target.closest(SEND_SELECTORS.join(","));
+    if (!btn) return;
+    const editable = editableFrom(document.activeElement) || document.querySelector('[contenteditable="true"], textarea');
+    const text = readText(editable).trim();
+    if (text.length < 8) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+
+    const res = await scan(text);
+    if (!res) {
+      performSend(editable);
+      return;
+    }
+    if (res.action === "block" || res.action === "redact") {
+      showBanner({ findings: res.findings, redacted: res.redacted, original: text, editable, isSubmit: true });
+    } else {
+      performSend(editable);
+    }
+  },
+  true
+);
+
+// --- banner -----------------------------------------------------------------
 
 function summarizeFindings(findings) {
   const labels = {
@@ -70,7 +213,7 @@ function summarizeFindings(findings) {
   return types.length ? types.join(", ") : "client PII";
 }
 
-function showBanner(findings, redacted, original, target) {
+function showBanner({ findings, redacted, original, editable, isSubmit }) {
   document.getElementById("falcon-dlp-banner")?.remove();
 
   const kinds = summarizeFindings(findings);
@@ -95,46 +238,51 @@ function showBanner(findings, redacted, original, target) {
 
   const msg = document.createElement("span");
   msg.style.flex = "1";
-  msg.textContent = `Paste blocked — Contains client PII: ${kinds}. A sanitized version is ready.`;
+  const verb = isSubmit ? "Send blocked" : "Paste blocked";
+  msg.textContent = `${verb} — Contains client PII: ${kinds}. A sanitized version is ready.`;
 
   const sanitizedBtn = document.createElement("button");
-  sanitizedBtn.textContent = "Paste sanitized";
+  sanitizedBtn.textContent = "Use sanitized";
   const overrideBtn = document.createElement("button");
   overrideBtn.textContent = "Override and log";
 
   for (const b of [sanitizedBtn, overrideBtn]) {
-    Object.assign(b.style, {
-      cursor: "pointer",
-      border: "0",
-      borderRadius: "6px",
-      padding: "8px 12px",
-      fontWeight: "600",
-    });
+    Object.assign(b.style, { cursor: "pointer", border: "0", borderRadius: "6px", padding: "8px 12px", fontWeight: "600" });
   }
   Object.assign(sanitizedBtn.style, { background: "#fff", color: "#b00020" });
-  Object.assign(overrideBtn.style, {
-    background: "transparent",
-    color: "#fff",
-    border: "1px solid rgba(255,255,255,.6)",
-  });
+  Object.assign(overrideBtn.style, { background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.6)" });
 
   sanitizedBtn.onclick = () => {
-    insertText(target, redacted);
+    replaceText(editable, redacted);
     bar.remove();
+    // On submit, leave it to the user to review + press Send again.
   };
 
   overrideBtn.onclick = async () => {
+    const reason = window.prompt(
+      "Override requires a reason (logged for compliance / Rule 204-2):",
+      ""
+    );
+    if (reason === null || reason.trim() === "") {
+      // Cancelled or empty — keep it blocked.
+      return;
+    }
     try {
       await fetch(`${AGENT}/override`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: location.href, findings }),
+        body: JSON.stringify({ url: location.href, findings, reason: reason.trim() }),
       });
     } catch (_) {
-      /* still let the user proceed; the block already happened locally */
+      /* proceed anyway; the block already happened locally */
     }
-    insertText(target, original);
     bar.remove();
+    if (isSubmit) {
+      replaceText(editable, original);
+      performSend(editable);
+    } else {
+      replaceText(editable, original);
+    }
   };
 
   bar.append(msg, sanitizedBtn, overrideBtn);

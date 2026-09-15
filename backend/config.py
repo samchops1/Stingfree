@@ -77,9 +77,26 @@ ACCOUNT = PatternRecognizer(
              "schwab", "fidelity", "custodian", "brokerage"],
 )
 
-# ABA routing number: exactly 9 digits, context-boosted (checksum could be
-# added later).
-ROUTING = PatternRecognizer(
+# ABA routing number: exactly 9 digits, context-boosted, AND checksum-validated.
+# The ABA checksum (3-7-1 weighting mod 10) eliminates the vast majority of
+# random 9-digit false positives: a valid routing number's digits satisfy
+#   (3*(d1+d4+d7) + 7*(d2+d5+d8) + 1*(d3+d6+d9)) % 10 == 0
+class AbaRoutingRecognizer(PatternRecognizer):
+    def validate_result(self, pattern_text):
+        digits = [int(c) for c in pattern_text if c.isdigit()]
+        if len(digits) != 9:
+            return False
+        checksum = (
+            3 * (digits[0] + digits[3] + digits[6])
+            + 7 * (digits[1] + digits[4] + digits[7])
+            + 1 * (digits[2] + digits[5] + digits[8])
+        )
+        # True  -> valid checksum, Presidio promotes the score (real routing #)
+        # False -> fails checksum, result discarded (was a random 9-digit run)
+        return checksum % 10 == 0
+
+
+ROUTING = AbaRoutingRecognizer(
     supported_entity="ABA_ROUTING",
     patterns=[Pattern("aba", r"\b\d{9}\b", 0.3)],
     context=["routing", "aba", "rtn", "wire", "ach", "bank"],

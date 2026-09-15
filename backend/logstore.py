@@ -44,18 +44,21 @@ def init_db():
                 source    TEXT    NOT NULL DEFAULT 'browser',
                 url       TEXT    NOT NULL,
                 verdict   TEXT    NOT NULL,
-                findings  TEXT    NOT NULL
+                findings  TEXT    NOT NULL,
+                note      TEXT    NOT NULL DEFAULT ''
             )
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts)")
-        # Migrate older DBs that predate the 'source' column.
+        # Migrate older DBs that predate newer columns.
         cols = {row["name"] for row in conn.execute("PRAGMA table_info(events)")}
         if "source" not in cols:
             conn.execute("ALTER TABLE events ADD COLUMN source TEXT NOT NULL DEFAULT 'browser'")
+        if "note" not in cols:
+            conn.execute("ALTER TABLE events ADD COLUMN note TEXT NOT NULL DEFAULT ''")
 
 
-def log_event(url, findings, verdict, source="browser"):
+def log_event(url, findings, verdict, source="browser", note=""):
     """Append one scan event. Never raises to the caller — a logging failure
     must not take a scan down, but we surface it on stderr so a dropped line is
     at least visible in the service log.
@@ -63,6 +66,7 @@ def log_event(url, findings, verdict, source="browser"):
     source: 'browser' (extension paste) or 'clipboard' (machine-wide watcher).
     url:    the site URL for the browser vector, or the app/window name for the
             clipboard vector (best-effort; may be empty).
+    note:   free-text context, e.g. the user's justification on an override.
     """
     row = (
         datetime.now(timezone.utc).isoformat(),
@@ -70,11 +74,12 @@ def log_event(url, findings, verdict, source="browser"):
         url or "",
         verdict,
         json.dumps(findings),
+        note or "",
     )
     try:
         with _lock, _connect() as conn:
             conn.execute(
-                "INSERT INTO events (ts, source, url, verdict, findings) VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO events (ts, source, url, verdict, findings, note) VALUES (?, ?, ?, ?, ?, ?)",
                 row,
             )
     except sqlite3.Error as exc:  # pragma: no cover - defensive
@@ -90,6 +95,7 @@ def _parse(row):
         "url": row["url"],
         "verdict": row["verdict"],
         "findings": json.loads(row["findings"]),
+        "note": row["note"] if "note" in row.keys() else "",
     }
 
 

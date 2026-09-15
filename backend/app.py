@@ -47,6 +47,7 @@ class ScanReq(BaseModel):
 class OverrideReq(BaseModel):
     url: str = ""
     findings: list = []
+    reason: str = ""
 
 
 @app.post("/scan")
@@ -67,9 +68,10 @@ def scan(r: ScanReq):
 
 @app.post("/override")
 def override(r: OverrideReq):
-    """User clicked 'Override and log' — record it as its own verdict so the
-    204-2 log measures how often people bypass the control."""
-    log_event(r.url, r.findings, "override", source="browser")
+    """User clicked 'Override and log' — record it as its own verdict, with the
+    user's justification, so the 204-2 log measures who bypassed the control
+    and why."""
+    log_event(r.url, r.findings, "override", source="browser", note=r.reason)
     return {"ok": True}
 
 
