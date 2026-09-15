@@ -13,8 +13,39 @@ further. Presidio also catches names/emails/phones/credit-cards out of the box.
 
 from presidio_analyzer import Pattern, PatternRecognizer
 
-# Any finding scoring strictly above this becomes a "block" verdict.
+# Findings scoring at or below this are treated as noise and ignored (keeps a
+# stray 9-digit number from firing unless context boosts it above the floor).
+MIN_SCORE = 0.4
+
+# Legacy single threshold, kept for the /scan verdict fallback. Prefer the
+# per-entity ENTITY_POLICY below, which is the real enforcement knob.
 BLOCK_THRESHOLD = 0.6
+
+# --- Per-entity policy (the enforcement knob for you / Rachel) ---------------
+# Action for each detected entity type once it clears MIN_SCORE:
+#   "block"   -> hard stop. Browser: cancel the paste. Clipboard: clear it.
+#   "redact"  -> allow a de-identified version. Browser: offer sanitized paste.
+#               Clipboard: replace clipboard contents with the redacted text.
+#   "monitor" -> log only, don't interrupt.
+# The overall action taken is the most severe among the findings present
+# (block > redact > monitor). Change these without touching code.
+ENTITY_POLICY = {
+    "US_SSN": "block",
+    "FIN_ACCOUNT": "block",
+    "ABA_ROUTING": "block",
+    "CREDIT_CARD": "block",
+    "US_BANK_NUMBER": "redact",
+    "US_ITIN": "block",
+    "US_PASSPORT": "redact",
+    "US_DRIVER_LICENSE": "redact",
+    "PERSON": "monitor",
+    "EMAIL_ADDRESS": "monitor",
+    "PHONE_NUMBER": "monitor",
+    "LOCATION": "monitor",
+    "URL": "monitor",
+}
+# Fallback action for any entity type not listed above.
+DEFAULT_ACTION = "monitor"
 
 # AI sites the extension is allowed to police (paste interception).
 # Sites you flat-out prohibit belong in Chrome URLBlocklist / rules.json,

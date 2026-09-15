@@ -1,12 +1,30 @@
-"""PyInstaller entry point.
+"""Falcon DLP agent entry point (also the PyInstaller entry point).
 
-Imports the app object directly (not the "app:app" import string) so the
-frozen binary doesn't need to re-import the module by name at runtime, and
-binds to loopback only.
+Starts BOTH runtimes of the local agent in one process:
+  1. the clipboard watcher (machine-wide vector) on a daemon thread, and
+  2. the FastAPI /scan API (browser vector) via uvicorn on the main thread,
+     bound to loopback only.
+
+On non-Windows the clipboard watcher no-ops (logs and returns), so the API
+still runs for development on macOS/Linux.
 """
 
+import threading
+
 import uvicorn
+
+import clipboard_agent
+import detector
 from app import app
 
+
+def _start_clipboard_watcher():
+    # Warm the model once up front so the first clipboard/scan hit is fast.
+    detector.warm_up()
+    clipboard_agent.watch()
+
+
 if __name__ == "__main__":
+    watcher = threading.Thread(target=_start_clipboard_watcher, daemon=True)
+    watcher.start()
     uvicorn.run(app, host="127.0.0.1", port=8765)

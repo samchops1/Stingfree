@@ -1,15 +1,25 @@
 # Falcon DLP
-Local endpoint DLP prototype. Two parts: a FastAPI+Presidio backend on
-127.0.0.1:8765 that scans text for PII, and a Chrome MV3 extension that
-intercepts pastes into AI sites and calls the backend.
+Local endpoint DLP prototype. One agent, two capture vectors:
+- a machine-wide CLIPBOARD watcher (clipboard_agent.py) that scans anything
+  copied and redacts/clears it before it can be pasted into ANY app, and
+- a FastAPI+Presidio /scan API on 127.0.0.1:8765 (app.py) that the Chrome MV3
+  extension calls to block pastes into AI sites before the site sees them.
+Both share one detection engine (detector.py) and one per-entity policy
+(policy.py + config.py).
 
 Hard constraints:
-- Scanned text NEVER leaves the machine. Backend binds to 127.0.0.1 only.
-- Every scan (allow, redact, block, override) is logged to SQLite for
-  Rule 204-2 recordkeeping. Never drop a log line.
-- Target: Windows + macOS. No kernel/system extensions.
-- Scope is the BROWSER paste/type vector only. Desktop-app blocking is
-  handled by non-admin lockdown + policy, NOT by this tool.
+- Scanned text NEVER leaves the machine. API binds to 127.0.0.1 only.
+- Every event (monitor, redact, block/clear, override) is logged to SQLite for
+  Rule 204-2 recordkeeping, tagged with its source (browser|clipboard).
+  Never drop a log line.
+- Target: Windows (clipboard vector) + macOS/Linux (API only). NO kernel/system
+  extensions, NO network filter driver, NO keystroke hooking.
+- Deliberately OUT of scope: PII typed directly (no clipboard), and data
+  uploaded/sent over the network by an app — those need OS hooks / a network
+  driver we don't build.
+- Enforcement policy is per-entity in config.py (block/redact/monitor); it is
+  the enforcement knob, not hardcoded.
 
 Stack: Python 3.11, FastAPI, presidio-analyzer, presidio-anonymizer,
-spaCy en_core_web_lg, SQLite. Extension: vanilla JS, MV3.
+spaCy en_core_web_lg, SQLite, pywin32 (Windows clipboard). Extension: vanilla
+JS, MV3. Windows exe via PyInstaller (built in CI on a windows runner).

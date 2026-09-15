@@ -41,9 +41,14 @@ jobs:
       - name: Download spaCy model
         run: python -m spacy download en_core_web_lg
 
+      # Fast, Presidio-free logic tests (policy + clipboard enforcement).
+      - name: Run policy unit tests
+        run: python test_policy.py
+
       # --onedir (NOT --onefile: onefile unpacks to temp every launch, trips EDR).
       # --collect-all is mandatory for presidio/spacy/the model; uvicorn is added
-      # so PyInstaller bundles its dynamically-imported loop/protocol modules.
+      # so PyInstaller bundles its dynamically-imported loop/protocol modules;
+      # the win32* hidden imports pull in pywin32 for the clipboard watcher.
       - name: Build with PyInstaller
         run: >
           pyinstaller --onedir --name falcon-dlp-agent
@@ -52,6 +57,9 @@ jobs:
           --collect-all spacy
           --collect-all en_core_web_lg
           --collect-all uvicorn
+          --hidden-import win32clipboard
+          --hidden-import win32con
+          --hidden-import win32timezone
           run.py
 
       # Prove the exe actually starts and blocks a fake SSN before we ship it.

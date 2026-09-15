@@ -1,7 +1,10 @@
-"""Falcon DLP backend — FastAPI + Presidio.
+"""Falcon DLP backend — FastAPI + Presidio (browser vector API).
 
 Binds to 127.0.0.1 only (enforced by run.py / the service definition).
 Scanned text never leaves the machine and is never written to the log.
+
+This is the API the Chrome extension calls. The machine-wide clipboard vector
+lives in clipboard_agent.py and shares the same detector.
 
 Endpoints:
   POST /scan      scan text, return verdict/findings/redacted, log the event
@@ -13,13 +16,11 @@ Endpoints:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from presidio_analyzer import AnalyzerEngine
-from presidio_anonymizer import AnonymizerEngine
 
+import detector
 from logstore import log_event, recent_events, today_counts, init_db
-from config import register_custom_recognizers, BLOCK_THRESHOLD
 
-app = FastAPI(title="Falcon DLP", version="0.1")
+app = FastAPI(title="Falcon DLP", version="0.2")
 
 # The extension is a different origin (chrome-extension://...) so it needs
 # CORS. This is safe: the server only listens on loopback, so "allow all
@@ -31,14 +32,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-analyzer = AnalyzerEngine()
-register_custom_recognizers(analyzer.registry)  # SSN / account / routing
-anonymizer = AnonymizerEngine()
-
 
 @app.on_event("startup")
 def _startup():
     init_db()
+    detector.warm_up()  # load the model now so the first scan isn't slow
 
 
 class ScanReq(BaseModel):
@@ -53,19 +51,25 @@ class OverrideReq(BaseModel):
 
 @app.post("/scan")
 def scan(r: ScanReq):
-    res = analyzer.analyze(text=r.text, language="en")
-    redacted = anonymizer.anonymize(text=r.text, analyzer_results=res).text
-    findings = [{"type": x.entity_type, "score": round(x.score, 2)} for x in res]
-    verdict = "block" if any(f["score"] > BLOCK_THRESHOLD for f in findings) else "allow"
-    log_event(r.url, findings, verdict)
-    return {"verdict": verdict, "findings": findings, "redacted": redacted}
+    result = detector.scan(r.text)
+    # The extension blocks on "block"; "redact"/"monitor"/"allow" pass through
+    # (the banner offers the sanitized version for redact). Map to a verdict
+    # the extension understands while keeping the richer action available.
+    verdict = "block" if result["action"] == "block" else "allow"
+    log_event(r.url, result["findings"], result["action"], source="browser")
+    return {
+        "verdict": verdict,
+        "action": result["action"],
+        "findings": result["findings"],
+        "redacted": result["redacted"],
+    }
 
 
 @app.post("/override")
 def override(r: OverrideReq):
     """User clicked 'Override and log' — record it as its own verdict so the
     204-2 log measures how often people bypass the control."""
-    log_event(r.url, r.findings, "override")
+    log_event(r.url, r.findings, "override", source="browser")
     return {"ok": True}
 
 
