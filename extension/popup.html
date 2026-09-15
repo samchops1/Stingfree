@@ -1,0 +1,86 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        width: 300px;
+        margin: 0;
+        font: 13px/1.4 -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #fff;
+        color: #1a1a1a;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 14px;
+        border-bottom: 1px solid #eee;
+      }
+      header h1 { font-size: 15px; margin: 0; flex: 1; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: #ccc; }
+      .dot.active { background: #1a9c46; }
+      .dot.down { background: #b00020; }
+      .status-label { font-size: 11px; color: #666; }
+      .tiles { display: flex; gap: 10px; padding: 12px 14px; }
+      .tile {
+        flex: 1;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+      }
+      .tile .n { font-size: 22px; font-weight: 700; }
+      .tile .l { font-size: 11px; color: #666; }
+      .tile.block .n { color: #b00020; }
+      h2 { font-size: 11px; text-transform: uppercase; color: #888; margin: 4px 14px; letter-spacing: .04em; }
+      ul { list-style: none; margin: 0; padding: 0 14px 8px; }
+      li { padding: 6px 0; border-bottom: 1px solid #f2f2f2; display: flex; justify-content: space-between; gap: 8px; }
+      li .site { color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      li .what { color: #666; flex-shrink: 0; }
+      li .what.block { color: #b00020; font-weight: 600; }
+      footer {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 14px; border-top: 1px solid #eee; font-size: 11px; color: #666;
+      }
+      .empty { color: #999; padding: 8px 14px 14px; }
+      @media (prefers-color-scheme: dark) {
+        body { background: #1f1f1f; color: #eee; }
+        header, footer { border-color: #333; }
+        .tile { border-color: #333; }
+        li { border-color: #2a2a2a; }
+        li .site { color: #ddd; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span id="dot" class="dot"></span>
+      <h1>Falcon DLP</h1>
+      <span id="status" class="status-label">…</span>
+    </header>
+
+    <div class="tiles">
+      <div class="tile">
+        <div class="n" id="redactions">0</div>
+        <div class="l">Redactions today</div>
+      </div>
+      <div class="tile block">
+        <div class="n" id="blocks">0</div>
+        <div class="l">Blocks today</div>
+      </div>
+    </div>
+
+    <h2>Recent</h2>
+    <ul id="recent"></ul>
+    <div class="empty" id="empty" hidden>No events yet today.</div>
+
+    <footer>
+      <span>127.0.0.1:8765</span>
+      <span id="conn">checking…</span>
+    </footer>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

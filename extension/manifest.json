@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Falcon DLP",
+  "version": "0.1",
+  "description": "Intercepts pastes into AI sites and screens them for client PII/NPI via the local Falcon DLP agent.",
+  "permissions": ["clipboardRead", "storage", "declarativeNetRequest", "alarms", "tabs"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.chatgpt.com/*",
+        "*://*.claude.ai/*",
+        "*://gemini.google.com/*",
+        "*://copilot.microsoft.com/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      { "id": "blocklist", "enabled": true, "path": "rules.json" }
+    ]
+  },
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html" }
+}
