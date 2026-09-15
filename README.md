@@ -45,6 +45,8 @@ backend/
   policy.py         per-entity block/redact/monitor decision (pure logic)
   clipboard_agent.py machine-wide Windows clipboard watcher + enforcement
   notify.py         best-effort Windows toast on clipboard action
+  scanner.py        file/folder PII discovery: extract text + scan (pdf/docx/xlsx/txt)
+  scan_files.py     CLI for the discovery scanner
   logstore.py       SQLite writes/reads (source-tagged)
   config.py         recognizers, MIN_SCORE, ENTITY_POLICY, AI domains
   test_scan.py      posts sample PII to /scan (needs the server running)
@@ -88,6 +90,28 @@ mode**, click **Load unpacked**, and select the `extension/` folder. Open
 
 **Deploying to real machines** (agent as a logon task + force-installed
 extension): see `service/windows/README-deploy.md`.
+
+## PII discovery scanner (files & folders)
+
+Point the same Presidio engine at documents at rest to find *which files hold
+client PII* — useful for auditing document stores. **Detection only: it reports,
+it does not block or modify files or stop copies** (content-aware file/USB
+blocking needs an OS filter driver, out of scope).
+
+```bash
+# dev:
+python scan_files.py "/path/to/ClientDocs"
+python scan_files.py report.pdf --json findings.json
+python scan_files.py "\\fileserver\share" --log      # also record to the 204-2 log
+
+# from the shipped exe (same binary as the agent):
+falcon-dlp-agent.exe scan "C:\ClientDocs"
+```
+
+Supports `.pdf .docx .xlsx .txt .csv .tsv .md .log .json`. Reports per file
+which entity types were found, counts, and *where* (PDF page / spreadsheet
+sheet). Nothing leaves the machine; document text is never written to the log,
+only finding types + counts.
 
 ## Enforcement policy
 

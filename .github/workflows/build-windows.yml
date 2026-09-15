@@ -60,6 +60,9 @@ jobs:
           --hidden-import win32clipboard
           --hidden-import win32con
           --hidden-import win32timezone
+          --hidden-import pypdf
+          --hidden-import docx
+          --hidden-import openpyxl
           run.py
 
       # Prove the exe actually starts and blocks a fake SSN before we ship it.
@@ -84,6 +87,16 @@ jobs:
           } finally {
             if ($p -and -not $p.HasExited) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
           }
+
+      # Prove the file-scanner subcommand works in the frozen exe.
+      - name: Smoke test the file scanner
+        run: |
+          $exe = "dist\falcon-dlp-agent\falcon-dlp-agent.exe"
+          "Client SSN is 123-45-6789 acct 12345678" | Out-File -Encoding utf8 sample.txt
+          $out = & $exe scan sample.txt 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch "SSN") { throw "scanner did not detect the SSN in sample.txt" }
+          Write-Host "Scanner smoke test passed."
 
       - name: Upload exe artifact
         uses: actions/upload-artifact@v4

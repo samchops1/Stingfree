@@ -9,6 +9,7 @@ On non-Windows the clipboard watcher no-ops (logs and returns), so the API
 still runs for development on macOS/Linux.
 """
 
+import sys
 import threading
 
 import uvicorn
@@ -24,7 +25,17 @@ def _start_clipboard_watcher():
     clipboard_agent.watch()
 
 
-if __name__ == "__main__":
+def _run_agent():
     watcher = threading.Thread(target=_start_clipboard_watcher, daemon=True)
     watcher.start()
     uvicorn.run(app, host="127.0.0.1", port=8765)
+
+
+if __name__ == "__main__":
+    # One binary, two modes:
+    #   falcon-dlp-agent            -> run the live agent (clipboard + API)
+    #   falcon-dlp-agent scan PATH  -> run the file/folder PII discovery scanner
+    if len(sys.argv) > 1 and sys.argv[1] == "scan":
+        import scan_files
+        raise SystemExit(scan_files.main(sys.argv[2:]))
+    _run_agent()

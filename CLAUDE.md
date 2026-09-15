@@ -5,7 +5,10 @@ Local endpoint DLP prototype. One agent, two capture vectors:
 - a FastAPI+Presidio /scan API on 127.0.0.1:8765 (app.py) that the Chrome MV3
   extension calls to block pastes into AI sites before the site sees them.
 Both share one detection engine (detector.py) and one per-entity policy
-(policy.py + config.py).
+(policy.py + config.py). A third tool, a file/folder PII DISCOVERY scanner
+(scanner.py + scan_files.py, also `falcon-dlp-agent scan PATH`), points the
+same engine at documents at rest (pdf/docx/xlsx/text) — detection/reporting
+only, it does NOT block or modify files.
 
 Hard constraints:
 - Scanned text NEVER leaves the machine. API binds to 127.0.0.1 only.
